@@ -156,9 +156,9 @@ def lz4_block_decompress(src, expected_len):
     return bytes(out[:op])
 
 
-def extract(path, outdir):
-    with open(path, "rb") as f:
-        data = f.read()
+def extract_bytes(data, outdir):
+    """Extract assemblies from in-memory store bytes (same as extract, no file read)."""
+    data = bytes(data)
     poff, psize = find_payload(data)
     p = poff
     if data[p : p + 4] != b"XABA":
@@ -202,6 +202,12 @@ def extract(path, outdir):
             f.write(raw)
         print("%s: %d -> %d bytes, %s PE" % (names[i], sz, len(raw), "valid" if ok else "INVALID"))
     print("Extracted %d entries, valid PE (MZ) after extraction: %d/%d" % (count, valid, count))
+    return valid, count
+
+
+def extract(path, outdir):
+    with open(path, "rb") as f:
+        return extract_bytes(f.read(), outdir)
 
 
 def main(argv=None):

@@ -9,6 +9,24 @@ Extract the managed (.NET) assemblies out of a MAUI Android assembly store.
 > python mauidll.py libassembly-store.so extracted-dlls
 > ```
 
+## apk2dll.py — APK in, DLLs out
+
+[`apk2dll.py`](apk2dll.py) wraps `mauidll.py`: give it an APK (or split-APK
+dir/zip), it checks for the .NET MAUI assembly store, picks an ABI, and
+extracts the DLLs. Stdlib only.
+
+```sh
+python apk2dll.py app.apk dlls
+python apk2dll.py splits/ dlls --abi arm64-v8a
+python apk2dll.py splits.zip dlls
+python apk2dll.py app.apk --list-abis
+```
+
+Detection: scans APK namelists for
+`lib/<abi>/libassembly-store.so` (new) or `lib/<abi>/libassemblies.*.blob.so`
+(old). ABI auto-pick order: arm64-v8a, armeabi-v7a, x86_64, x86.
+Exit codes: 0 = extracted, 2 = not a MAUI app / usage, 1 = corrupt store.
+
 .NET Android apps ship their managed code inside a shared library, usually
 `libassemblies.<abi>.blob.so` (older versions) or `libassembly-store.so`.
 `mauidll` parses that file and writes every assembly it contains to disk as a
