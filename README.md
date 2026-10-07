@@ -2,103 +2,120 @@
 
 Extract the managed (.NET) assemblies out of a MAUI Android assembly store.
 
-> **Python port:** [`mauidll.py`](mauidll.py) is a dependency-free Python 3 port
-> of `mauidll.cr`, verified byte-identical on 175/175 assemblies:
->
-> ```sh
-> python mauidll.py libassembly-store.so extracted-dlls
-> ```
-
-## apk2dll.py — APK in, DLLs out
-
-[`apk2dll.py`](apk2dll.py) wraps `mauidll.py`: give it an APK (or split-APK
-dir/zip), it checks for the .NET MAUI assembly store, picks an ABI, and
-extracts the DLLs. Stdlib only.
-
-```sh
-python apk2dll.py app.apk dlls
-python apk2dll.py splits/ dlls --abi arm64-v8a
-python apk2dll.py splits.zip dlls
-python apk2dll.py app.apk --list-abis
-```
-
-Detection: scans APK namelists for
-`lib/<abi>/libassembly-store.so` (new) or `lib/<abi>/libassemblies.*.blob.so`
-(old). ABI auto-pick order: arm64-v8a, armeabi-v7a, x86_64, x86.
-Exit codes: 0 = extracted, 2 = not a MAUI app / usage, 1 = corrupt store.
-
 .NET Android apps ship their managed code inside a shared library, usually
 `libassemblies.<abi>.blob.so` (older versions) or `libassembly-store.so`.
-`mauidll` parses that file and writes every assembly it contains to disk as a
-standard `.dll`  file, ready for inspection in a decompiler such as
-ILSpy.
+This repo gives you two Python-first ways to get the DLLs out, plus the
+original Crystal tool:
 
-The tool is a single self-contained Crystal program with no external
-dependencies. The LZ4 decompressor it needs is implemented inline, so nothing
-beyond the standard library is required.
+- [`apk2dll.py`](apk2dll.py) — **APK in, DLLs out.** Detects the MAUI store,
+  picks an ABI, extracts. Start here.
+- [`mauidll.py`](mauidll.py) — store file in, DLLs out (Python port).
+- [`mauidll.cr`](mauidll.cr) — original Crystal implementation.
+
+All Python code is **stdlib only** (no `pip install` needed).
 
 ## Quick start
 
+No build, no dependencies — just Python 3.6+:
+
 ```sh
+# 1. Whole APK (or split-APK dir / zip) straight to DLLs:
+python apk2dll.py app.apk dlls
+python apk2dll.py splits/ dlls --abi arm64-v8a
+python apk2dll.py splits.zip dlls
+
+# 2. Already have the store .so (e.g. lib/arm64-v8a/libassembly-store.so)?
+python mauidll.py libassembly-store.so extracted-dlls
+
+# 3. Original Crystal binary (optional):
 crystal build --release mauidll.cr -o mauidll
 ./mauidll libassembly-store.so extracted-dlls
 ```
 
-The binary produced by `crystal build` is self-contained: it only needs Crystal
-on the build machine, not on any machine where you run it.
+Typical output:
+
+```
+APK: file:app.apk | ABI: arm64-v8a | store: lib/arm64-v8a/libassembly-store.so (9383262 bytes)
+MALIYAH.dll: 22144 -> 37888 bytes, valid PE
+...
+Extracted 175 entries, valid PE (MZ) after extraction: 175/175
+```
 
 ## Installation
 
-### 1. Install Crystal
+### Python path (recommended — nothing to install)
 
-`mauidll` is compiled with the Crystal language. If you do not have Crystal yet:
+1. Install Python 3.6+ from [python.org](https://www.python.org/downloads/)
+   (or `sudo apt install python3` / `brew install python3`).
+2. Clone this repo. Done — `apk2dll.py` + `mauidll.py` use only the standard
+   library (`argparse`, `io`, `os`, `re`, `struct`, `sys`, `zipfile`).
+
+Verify:
+
+```sh
+python -m py_compile apk2dll.py mauidll.py && echo OK
+python apk2dll.py app.apk --list-abis
+```
+
+### Crystal path (original tool only)
+
+Only needed if you want to build `mauidll.cr`:
 
 #### macOS
-
-The most popular way is Homebrew:
 
 ```sh
 brew install crystal
 ```
 
-Crystal is also available as an official universal tarball (Apple Silicon and
-Intel) from the [downloads page](https://crystal-lang.org/install/).
+Crystal is also available as an official universal tarball from the
+[downloads page](https://crystal-lang.org/install/).
 
 #### Linux
-
-On Debian, Ubuntu and related distributions, install the official package
-repository and then the compiler:
 
 ```sh
 curl -fsSL https://crystal-lang.org/install.sh | sudo bash
 sudo apt install crystal
 ```
 
-Alternatively, on any distribution that supports snaps:
+Or: `sudo snap install crystal --classic` / `sudo pacman -S crystal shards`.
 
-```sh
-sudo snap install crystal --classic
-```
-
-On Arch Linux:
-
-```sh
-sudo pacman -S crystal shards
-```
-
-### 2. Build
+#### Build
 
 ```sh
 crystal build --release mauidll.cr -o mauidll
 ```
 
-`mauidll` was developed and tested with Crystal 1.20.x. It uses only the standard
-library, so any reasonably recent release should work.
+Developed and tested with Crystal 1.20.x; any reasonably recent release works.
 
 ## Usage
 
+### apk2dll.py — APK in, DLLs out
+
 ```sh
-./mauidll <assembly-store.so> [outdir]
+python apk2dll.py <apk|dir|zip> [outdir] [--abi ABI] [--list-abis]
+                  [--max-store-mb 256] [-q]
+```
+
+| Argument / flag         | Meaning                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `input`                 | APK file, dir of split APKs, or zip of splits (`.zip`/`.apks`/`.xapk`/`.apkm`) |
+| `outdir` (optional)     | Output directory, defaults to `dlls`                           |
+| `--abi ABI`             | Force ABI (default: auto-pick `arm64-v8a` first)               |
+| `--list-abis`           | List ABIs that contain an assembly store and exit              |
+| `--max-store-mb N`      | Max store size to read (default 256, zip-bomb guard)           |
+| `-q`                    | Quiet: only errors + summary                                   |
+
+Detection: scans APK namelists for `lib/<abi>/libassembly-store.so` (new) or
+`lib/<abi>/libassemblies.*.blob.so` (old). ABI auto-pick order: `arm64-v8a`,
+`armeabi-v7a`, `x86_64`, `x86`.
+
+Exit codes: `0` = extracted, `2` = not a MAUI app / usage error,
+`1` = corrupt store / IO error.
+
+### mauidll.py — store file in, DLLs out
+
+```sh
+python mauidll.py <assembly-store.so> [outdir]
 ```
 
 | Argument                | Meaning                                                        |
@@ -109,20 +126,13 @@ library, so any reasonably recent release should work.
 Example:
 
 ```sh
-./mauidll /tmp/app64-v8a/libassembly-store.so /tmp/extracted
-```
-
-Output lines report one line per assembly (`name: size -> decompressed size,
-valid PE`), followed by a summary such as:
-
-```
-Extracted 235 entries, valid PE (MZ) after extraction: 235/235
+python mauidll.py /tmp/app64-v8a/libassembly-store.so /tmp/extracted
 ```
 
 ## How it works
 
 1. The store file is an ELF object. The assembly store lives in a
-   non-loadable `payload` section, which `mauidll` locates via the ELF section
+   non-loadable `payload` section, located via the ELF section
    headers (32- and 64-bit ELF are both supported).
 2. The payload begins with a 20-byte `XABA` header: magic, version, entry
    count, index entry count and index size.
@@ -134,5 +144,16 @@ Extracted 235 entries, valid PE (MZ) after extraction: 235/235
    preceded by a 12-byte header that includes the uncompressed size; anything
    else (starting with `MZ`) is stored verbatim.
 5. Decompressed blobs are written to disk under their assembly name and
-   checked to start with the `MZ` PE signature.
+   checked to start with the `MZ` PE signature. `apk2dll.py` adds the outer
+   layer: unzip the APK, find the store for the best ABI, feed its bytes to
+   the same parser.
 
+## Credits
+
+- Original Crystal tool [`mauidll`](https://github.com/BishopFox/mauidll) by
+  [Bishop Fox](https://github.com/BishopFox) — ELF/XABA/XALZ format, LZ4
+  block decompressor, and overall design.
+- Python port (`mauidll.py`) + `apk2dll.py` APK wrapper in this fork by
+  [sreenushenoy](https://github.com/sreenushenoy) — verified byte-identical
+  (175/175 assemblies) against the Crystal implementation on a real MAUI app.
+- Decompile the extracted DLLs with [ILSpy](https://github.com/icsharpcode/ILSpy).
