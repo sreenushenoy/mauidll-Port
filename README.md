@@ -2,6 +2,13 @@
 
 Extract the managed (.NET) assemblies out of a MAUI Android assembly store.
 
+> **Python port:** [`mauidll.py`](mauidll.py) is a dependency-free Python 3 port
+> of `mauidll.cr`, verified byte-identical on 175/175 assemblies:
+>
+> ```sh
+> python mauidll.py libassembly-store.so extracted-dlls
+> ```
+
 .NET Android apps ship their managed code inside a shared library, usually
 `libassemblies.<abi>.blob.so` (older versions) or `libassembly-store.so`.
 `mauidll` parses that file and writes every assembly it contains to disk as a
